@@ -343,14 +343,19 @@ export function parseCSV(text: string): Omit<Transaction, 'id'>[] {
  * Parse amount strings like "TWD 10,876" / "10876" / "10,876.50" / "-500"
  */
 function parseAmount(raw: string): number {
-  // Remove currency code prefix (e.g. "TWD ", "USD "), commas, and minus signs
-  const cleaned = raw.replace(/^[A-Z]{3}\s*/i, '').replace(/,/g, '').replace(/-/g, '').trim()
+  // Remove minus signs, currency code (e.g. "TWD", "USD"), commas, and whitespace
+  // Handles: "TWD 10,876" / "-TWD 10,876" / "-10,876" / "10876"
+  const cleaned = raw
+    .replace(/-/g, '')           // strip minus signs anywhere
+    .replace(/[A-Z]{3}/gi, '')   // strip currency code
+    .replace(/,/g, '')           // strip thousand separators
+    .trim()
   return parseFloat(cleaned)
 }
 
-/** Extract 3-letter currency code from strings like "TWD 10,876" */
+/** Extract 3-letter currency code from strings like "TWD 10,876" / "-TWD 10,876" */
 function extractCurrency(raw: string): string {
-  const m = raw.match(/^([A-Z]{3})\s/i)
+  const m = raw.match(/-?([A-Z]{3})/i)
   return m ? m[1].toUpperCase() : ''
 }
 
