@@ -198,43 +198,142 @@ export function parseSpreadsheet(buffer: ArrayBuffer): BackupData {
   }
 }
 
-// ── CSV parse (unchanged) ─────────────────────────────────────────────────────
+// ── CSV / TSV parse ───────────────────────────────────────────────────────────
 
+/**
+ * 解析 CSV 或 TSV（自動偵測分隔符）
+ * 支援欄位別名對應，金額允許 "TWD 10,876" 這類格式
+ */
 export function parseCSV(text: string): Omit<Transaction, 'id'>[] {
-  const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim())
+  // Normalize line endings
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // Auto-detect delimiter: if header has more tabs than commas → TSV
+  const firstLine = normalized.split('\n')[0]
+  const delimiter = firstLine.split('\t').length > firstLine.split(',').length ? '\t' : ','
+
+  // Split into logical lines (handle quoted multi-line fields)
+  const lines = splitLines(normalized, delimiter)
   if (lines.length < 2) throw new Error('CSV 內容為空')
 
-  const header = lines[0].toLowerCase().split(',').map((h) => h.trim())
-  const idx = (key: string) => {
-    const i = header.indexOf(key)
-    if (i === -1) throw new Error(`CSV 缺少欄位：${key}`)
-    return i
+  const rawHeader = lines[0]
+  const header = (delimiter === '\t'
+    ? rawHeader.split('\t')
+    : splitCSVLine(rawHeader)
+  ).map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''))
+
+  // Column alias map: accept various naming conventions
+  const ALIASES: Record<string, string[]> = {
+    type:        ['type', '類型', '交易類型'],
+    category:    ['category', '類別', '交易類別', '手機轉帳'],
+    amount:      ['amount', '金額', '交易金額'],
+    currency:    ['currency', '幣別', '交易幣別'],
+    date:        ['date', 'action_date', '日期', '交易日期', '交易時間'],
+    description: ['description', '備註', '說明', 'memo', 'information', 'desc'],
   }
 
-  const typeIdx = idx('type')
-  const catIdx = idx('category')
-  const amtIdx = idx('amount')
-  const curIdx = idx('currency')
-  const dateIdx = idx('date')
-  const descIdx = header.indexOf('description')
+  const resolve = (field: string): number => {
+    for (const alias of ALIASES[field]) {
+      const i = header.indexOf(alias.toLowerCase())
+      if (i !== -1) return i
+    }
+    return -1
+  }
 
-  return lines.slice(1).map((line, i) => {
-    const cols = splitCSVLine(line)
-    const type = cols[typeIdx]?.trim()
-    if (type !== 'income' && type !== 'expense') {
-      throw new Error(`第 ${i + 2} 行：type 必須為 income 或 expense`)
+  const typeIdx = resolve('type')
+  const catIdx  = resolve('category')
+  const amtIdx  = resolve('amount')
+  const curIdx  = resolve('currency')
+  const dateIdx = resolve('date')
+  const descIdx = resolve('description')
+
+  if (typeIdx === -1) throw new Error('找不到 type（類型）欄位')
+  if (amtIdx  === -1) throw new Error('找不到 amount（金額）欄位')
+
+  const results: Omit<Transaction, 'id'>[] = []
+
+  lines.slice(1).forEach((line, i) => {
+    if (!line.trim()) return
+    const cols = delimiter === '\t' ? line.split('\t') : splitCSVLine(line)
+
+    const rawType = cols[typeIdx]?.trim() ?? ''
+    const type = rawType === 'income' || rawType === '收入' ? 'income'
+      : rawType === 'expense' || rawType === '支出' ? 'expense'
+      : null
+    if (!type) {
+      // Skip header-like rows or empty type rows silently
+      if (!rawType) return
+      throw new Error(`第 ${i + 2} 行：type 必須為 income / expense，實際值：「${rawType}」`)
     }
-    const amount = parseFloat(cols[amtIdx])
-    if (isNaN(amount)) throw new Error(`第 ${i + 2} 行：amount 格式錯誤`)
-    return {
+
+    const rawAmount = cols[amtIdx]?.trim() ?? ''
+    const amount = parseAmount(rawAmount)
+    if (isNaN(amount) || amount < 0) throw new Error(`第 ${i + 2} 行：金額格式無法解析：「${rawAmount}」`)
+
+    // Currency: prefer dedicated column, fallback to extracting from amount string
+    let currency = curIdx >= 0 ? cols[curIdx]?.trim() ?? '' : ''
+    if (!currency) currency = extractCurrency(rawAmount)
+    if (!currency) currency = 'TWD'
+
+    const rawDate = dateIdx >= 0 ? (cols[dateIdx]?.trim() ?? '') : ''
+
+    results.push({
       type,
-      category: cols[catIdx]?.trim() ?? '',
+      category: catIdx  >= 0 ? (cols[catIdx]?.trim()  ?? '') : '',
       amount,
-      currency: cols[curIdx]?.trim() ?? 'TWD',
-      date: cols[dateIdx]?.trim() ?? '',
+      currency,
+      date: parseDate(rawDate),
       description: descIdx >= 0 ? (cols[descIdx]?.trim() ?? '') : '',
-    }
+    })
   })
+
+  if (results.length === 0) throw new Error('沒有找到有效的資料列')
+  return results
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Parse amount strings like "TWD 10,876" / "10876" / "10,876.50" / "-500"
+ */
+function parseAmount(raw: string): number {
+  // Remove currency code prefix (e.g. "TWD ", "USD ")
+  const cleaned = raw.replace(/^[A-Z]{3}\s*/i, '').replace(/,/g, '').trim()
+  return parseFloat(cleaned)
+}
+
+/** Extract 3-letter currency code from strings like "TWD 10,876" */
+function extractCurrency(raw: string): string {
+  const m = raw.match(/^([A-Z]{3})\s/i)
+  return m ? m[1].toUpperCase() : ''
+}
+
+/**
+ * Split text into logical lines, keeping quoted multi-line fields intact.
+ * Returns one element per data row (header + data rows).
+ */
+function splitLines(text: string, delimiter: string): string[] {
+  if (delimiter === '\t') {
+    // TSV: quoted multi-line is rare, just split normally
+    return text.split('\n')
+  }
+  // CSV: handle quoted fields that span multiple lines
+  const rows: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') { current += '"'; i++ }
+      else { inQuotes = !inQuotes; current += ch }
+    } else if (ch === '\n' && !inQuotes) {
+      rows.push(current); current = ''
+    } else {
+      current += ch
+    }
+  }
+  if (current) rows.push(current)
+  return rows
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
