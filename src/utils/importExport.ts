@@ -1,6 +1,52 @@
 import * as XLSX from 'xlsx'
 import type { Transaction, Asset, Liability } from '../types'
 
+// ── Encoding detection ────────────────────────────────────────────────────────
+
+/**
+ * 自動偵測文字編碼並解碼
+ * 優先順序：UTF-8 BOM → UTF-16 BOM → UTF-8 → Big5 → GBK
+ */
+export function decodeText(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+
+  // UTF-8 BOM: EF BB BF
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(buffer)
+  }
+  // UTF-16 LE BOM: FF FE
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(buffer)
+  }
+  // UTF-16 BE BOM: FE FF
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(buffer)
+  }
+
+  // Try UTF-8 first — if it decodes cleanly (no replacement chars), use it
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buffer)
+  if (!utf8.includes('\uFFFD')) return utf8
+
+  // Fallback: Big5 (CP950) — common in Taiwan bank exports
+  try {
+    const big5 = new TextDecoder('big5', { fatal: true }).decode(buffer)
+    return big5
+  } catch {
+    // ignore
+  }
+
+  // Fallback: GBK — mainland China
+  try {
+    const gbk = new TextDecoder('gbk', { fatal: true }).decode(buffer)
+    return gbk
+  } catch {
+    // ignore
+  }
+
+  // Last resort: UTF-8 with replacement
+  return utf8
+}
+
 // ── JSON ──────────────────────────────────────────────────────────────────────
 
 export interface BackupData {
@@ -297,8 +343,8 @@ export function parseCSV(text: string): Omit<Transaction, 'id'>[] {
  * Parse amount strings like "TWD 10,876" / "10876" / "10,876.50" / "-500"
  */
 function parseAmount(raw: string): number {
-  // Remove currency code prefix (e.g. "TWD ", "USD ")
-  const cleaned = raw.replace(/^[A-Z]{3}\s*/i, '').replace(/,/g, '').trim()
+  // Remove currency code prefix (e.g. "TWD ", "USD "), commas, and minus signs
+  const cleaned = raw.replace(/^[A-Z]{3}\s*/i, '').replace(/,/g, '').replace(/-/g, '').trim()
   return parseFloat(cleaned)
 }
 

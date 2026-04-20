@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import {
   exportToJSON, exportToCSV, exportToXLSX,
-  parseJSON, parseCSV, parseSpreadsheet,
+  parseJSON, parseCSV, parseSpreadsheet, decodeText,
   type BackupData,
 } from '../../utils/importExport'
 import type { Transaction, Asset, Liability } from '../../types'
@@ -48,7 +48,8 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const text = await file.text()
+      const buffer = await file.arrayBuffer()
+      const text = decodeText(buffer)
       const data = parseJSON(text)
       applyImport(data)
       const count = data.transactions.length + data.assets.length + data.liabilities.length
@@ -63,7 +64,8 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const text = await file.text()
+      const buffer = await file.arrayBuffer()
+      const text = decodeText(buffer)
       const rows = parseCSV(text)
       if (mergeMode === 'replace') {
         store.transactions.forEach((t) => store.deleteTransaction(t.id))
