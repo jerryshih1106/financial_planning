@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { useTotalAssets } from '../../hooks/useConvert'
 import { formatCurrency, formatLargeNumber } from '../../utils/currency'
 import { calcFutureValue, generateGrowthSeries, calcLoanPayment } from '../../utils/calculations'
 import { CURRENCIES } from '../../types'
@@ -12,6 +13,7 @@ type CalcMode = 'compound' | 'loan'
 
 export default function Calculator() {
   const { settings } = useFinanceStore()
+  const { totalAssets } = useTotalAssets()
   const [mode, setMode] = useState<CalcMode>('compound')
 
   return (
@@ -41,7 +43,7 @@ export default function Calculator() {
       </div>
 
       {mode === 'compound' ? (
-        <CompoundCalculator defaultCurrency={settings.currency} />
+        <CompoundCalculator defaultCurrency={settings.currency} initialAssets={Math.round(totalAssets)} />
       ) : (
         <LoanCalculator defaultCurrency={settings.currency} />
       )}
@@ -49,9 +51,9 @@ export default function Calculator() {
   )
 }
 
-function CompoundCalculator({ defaultCurrency }: { defaultCurrency: string }) {
+function CompoundCalculator({ defaultCurrency, initialAssets }: { defaultCurrency: string; initialAssets: number }) {
   const [form, setForm] = useState({
-    principal: '1000000',
+    principal: initialAssets > 0 ? String(initialAssets) : '1000000',
     monthlyContribution: '10000',
     annualReturn: '7',
     years: '20',

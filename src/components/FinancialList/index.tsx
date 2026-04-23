@@ -1,13 +1,19 @@
 import { useState } from 'react'
-import { Plus, Wallet, TrendingUp, TrendingDown, Building2 } from 'lucide-react'
+import { Plus, Wallet, TrendingUp, TrendingDown, Building2, BarChart2 } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
+import { useConvert, useTotalAssets } from '../../hooks/useConvert'
 import { formatCurrency, formatLargeNumber } from '../../utils/currency'
 import TransactionForm from './TransactionForm'
 import AssetForm from './AssetForm'
 import TransactionItem from './TransactionItem'
 import AssetItem from './AssetItem'
+import StockPortfolio from './StockPortfolio'
 
-type SubTab = 'transactions' | 'assets' | 'liabilities'
+type SubTab = 'transactions' | 'stocks' | 'assets' | 'liabilities'
+
+function safeAmount(n: number): number {
+  return isFinite(n) && !isNaN(n) ? n : 0
+}
 
 export default function FinancialList() {
   const [subTab, setSubTab] = useState<SubTab>('transactions')
@@ -17,19 +23,19 @@ export default function FinancialList() {
 
   const { transactions, assets, liabilities, settings } = useFinanceStore()
   const currency = settings.currency
+  const { toDisplay } = useConvert()
+  const { totalManualAssets, totalStockValue, totalAssets, totalLiabilities, netWorth } = useTotalAssets()
 
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + toDisplay(safeAmount(t.amount), t.currency), 0)
   const totalExpense = transactions
     .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0)
-  const totalAssets = assets.reduce((sum, a) => sum + a.value, 0)
-  const totalLiabilities = liabilities.reduce((sum, l) => sum + l.amount, 0)
-  const netWorth = totalAssets - totalLiabilities
+    .reduce((sum, t) => sum + toDisplay(safeAmount(t.amount), t.currency), 0)
 
   const SUB_TABS: { id: SubTab; label: string }[] = [
     { id: 'transactions', label: '收支記錄' },
+    { id: 'stocks', label: '股票帳本' },
     { id: 'assets', label: '資產' },
     { id: 'liabilities', label: '負債' },
   ]
@@ -55,6 +61,7 @@ export default function FinancialList() {
           value={formatLargeNumber(totalAssets, currency)}
           icon={<Building2 size={20} className="text-blue-500" />}
           color="blue"
+          sub={totalStockValue > 0 ? `含股票 ${formatLargeNumber(totalStockValue, currency)}` : undefined}
         />
         <SummaryCard
           title="淨資產"
@@ -66,17 +73,18 @@ export default function FinancialList() {
 
       {/* Sub Tabs */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="flex border-b border-gray-100 dark:border-gray-700 px-4">
+        <div className="flex border-b border-gray-100 dark:border-gray-700 px-4 overflow-x-auto">
           {SUB_TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setSubTab(t.id)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 subTab === t.id
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
               }`}
             >
+              {t.id === 'stocks' && <BarChart2 size={14} />}
               {t.label}
             </button>
           ))}
@@ -108,11 +116,15 @@ export default function FinancialList() {
             </div>
           )}
 
+          {subTab === 'stocks' && (
+            <StockPortfolio currency={currency} />
+          )}
+
           {subTab === 'assets' && (
             <div>
               <div className="flex justify-between items-center mb-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  總資產：{formatCurrency(totalAssets, currency)}
+                  總資產：{formatCurrency(totalManualAssets, currency)}
                 </p>
                 <button
                   onClick={() => setShowAssetForm(true)}
@@ -168,12 +180,13 @@ export default function FinancialList() {
 }
 
 function SummaryCard({
-  title, value, icon, color,
+  title, value, icon, color, sub,
 }: {
   title: string
   value: string
   icon: React.ReactNode
   color: 'green' | 'red' | 'blue' | 'purple' | 'orange'
+  sub?: string
 }) {
   const bg = {
     green: 'bg-green-50 dark:bg-green-900/20',
@@ -190,6 +203,7 @@ function SummaryCard({
         <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>{icon}</div>
       </div>
       <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
     </div>
   )
 }

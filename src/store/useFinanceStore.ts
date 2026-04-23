@@ -1,16 +1,19 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Transaction, Asset, Liability, Settings, FireSettings, Tab } from '../types'
+import type { Transaction, Asset, Liability, StockPosition, Settings, FireSettings, Tab } from '../types'
+import type { Rates } from '../utils/exchangeRate'
 
 interface FinanceStore {
   // State
   transactions: Transaction[]
   assets: Asset[]
   liabilities: Liability[]
+  stockPositions: StockPosition[]
   settings: Settings
   fireSettings: FireSettings
   activeTab: Tab
+  exchangeRates: Rates
 
   // Actions - Transactions
   addTransaction: (tx: Omit<Transaction, 'id'>) => void
@@ -27,10 +30,16 @@ interface FinanceStore {
   updateLiability: (id: string, liability: Partial<Liability>) => void
   deleteLiability: (id: string) => void
 
+  // Actions - Stocks
+  addStockPosition: (pos: Omit<StockPosition, 'id'>) => void
+  updateStockPosition: (id: string, pos: Partial<StockPosition>) => void
+  deleteStockPosition: (id: string) => void
+
   // Actions - Settings
   updateSettings: (settings: Partial<Settings>) => void
   updateFireSettings: (settings: Partial<FireSettings>) => void
   setActiveTab: (tab: Tab) => void
+  setExchangeRates: (rates: Rates) => void
 }
 
 const defaultFireSettings: FireSettings = {
@@ -42,6 +51,8 @@ const defaultFireSettings: FireSettings = {
   safeWithdrawalRate: 4,
   currentAge: 30,
   targetRetirementAge: 50,
+  useCustomTarget: false,
+  customTargetAmount: 30000000,
 }
 
 export const useFinanceStore = create<FinanceStore>()(
@@ -50,9 +61,11 @@ export const useFinanceStore = create<FinanceStore>()(
       transactions: [],
       assets: [],
       liabilities: [],
+      stockPositions: [],
       settings: { currency: 'TWD', theme: 'light' },
       fireSettings: defaultFireSettings,
       activeTab: 'list',
+      exchangeRates: { USD: 1, TWD: 32.5, EUR: 0.92, JPY: 154, GBP: 0.79, CNY: 7.24, HKD: 7.83, SGD: 1.35 },
 
       addTransaction: (tx) =>
         set((state) => ({
@@ -99,6 +112,21 @@ export const useFinanceStore = create<FinanceStore>()(
           liabilities: state.liabilities.filter((l) => l.id !== id),
         })),
 
+      addStockPosition: (pos) =>
+        set((state) => ({
+          stockPositions: [{ ...pos, id: uuidv4() }, ...state.stockPositions],
+        })),
+      updateStockPosition: (id, pos) =>
+        set((state) => ({
+          stockPositions: state.stockPositions.map((p) =>
+            p.id === id ? { ...p, ...pos } : p
+          ),
+        })),
+      deleteStockPosition: (id) =>
+        set((state) => ({
+          stockPositions: state.stockPositions.filter((p) => p.id !== id),
+        })),
+
       updateSettings: (settings) =>
         set((state) => ({ settings: { ...state.settings, ...settings } })),
       updateFireSettings: (settings) =>
@@ -106,6 +134,7 @@ export const useFinanceStore = create<FinanceStore>()(
           fireSettings: { ...state.fireSettings, ...settings },
         })),
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setExchangeRates: (rates) => set({ exchangeRates: rates }),
     }),
     { name: 'financial-planning-store' }
   )

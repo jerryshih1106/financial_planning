@@ -1,4 +1,4 @@
-import { LayoutList, BarChart2, Calculator, Target } from 'lucide-react'
+import { LayoutList, BarChart2, Calculator, Target, FolderOpen } from 'lucide-react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import type { Tab } from '../../types'
 
@@ -7,6 +7,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'charts', label: '視覺化圖表', icon: <BarChart2 size={20} /> },
   { id: 'calculator', label: '未來試算', icon: <Calculator size={20} /> },
   { id: 'fire', label: '財富自由', icon: <Target size={20} /> },
+  { id: 'ppt', label: 'PPT 資料夾', icon: <FolderOpen size={20} /> },
 ]
 
 export default function Navigation() {

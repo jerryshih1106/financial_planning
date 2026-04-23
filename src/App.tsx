@@ -1,23 +1,28 @@
 import { useEffect } from 'react'
 import { useFinanceStore } from './store/useFinanceStore'
+import { fetchExchangeRates } from './utils/exchangeRate'
 import Header from './components/Layout/Header'
 import Navigation from './components/Layout/Navigation'
 import FinancialList from './components/FinancialList'
 import Charts from './components/Charts'
 import Calculator from './components/Calculator'
 import FirePlanning from './components/FirePlanning'
+import PPTFolder from './components/PPTFolder'
 
 export default function App() {
-  const { activeTab, settings } = useFinanceStore()
+  const { activeTab, settings, setExchangeRates } = useFinanceStore()
 
+  // Apply dark/light theme
   useEffect(() => {
     const root = document.documentElement
-    if (settings.theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
+    if (settings.theme === 'dark') root.classList.add('dark')
+    else root.classList.remove('dark')
   }, [settings.theme])
+
+  // Fetch exchange rates on startup
+  useEffect(() => {
+    fetchExchangeRates().then(setExchangeRates).catch(() => { /* use fallback */ })
+  }, [setExchangeRates])
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
@@ -28,6 +33,7 @@ export default function App() {
         {activeTab === 'charts' && <Charts />}
         {activeTab === 'calculator' && <Calculator />}
         {activeTab === 'fire' && <FirePlanning />}
+        {activeTab === 'ppt' && <PPTFolder />}
       </main>
     </div>
   )

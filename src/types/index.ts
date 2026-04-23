@@ -46,9 +46,24 @@ export interface FireSettings {
   safeWithdrawalRate: number
   currentAge: number
   targetRetirementAge: number
+  useCustomTarget: boolean
+  customTargetAmount: number
 }
 
-export type Tab = 'list' | 'charts' | 'calculator' | 'fire'
+export interface StockPosition {
+  id: string
+  symbol: string        // e.g. "2330.TW", "AAPL"
+  name: string
+  shares: number
+  avgCost: number       // average cost per share
+  currency: string
+  purchaseDate?: string // YYYY-MM-DD, used for annualized return
+  currentPrice?: number
+  currentCurrency?: string
+  lastUpdated?: string
+}
+
+export type Tab = 'list' | 'charts' | 'calculator' | 'fire' | 'ppt'
 
 export const CURRENCIES = [
   { code: 'TWD', symbol: 'NT$', name: '台幣' },
